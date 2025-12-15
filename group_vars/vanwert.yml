@@ -1,0 +1,12 @@
+# Van Wert site-specific baseline overrides/additions
+ntp_servers:
+  - 10.10.2.10
+
+syslog_servers:
+  - 10.20.2.50
+
+tacacs_servers:
+  - name: tacacs-vw-1
+    ip: 10.30.2.10
+
+aaa_source_interface: "GigabitEthernet0/0"

@@ -1,0 +1,194 @@
+- name: Generate intended configs from templates (no device required)
+  hosts: cisco_ios
+  gather_facts: false
+
+  vars_files:
+    - ../group_vars/cisco_ios_vault.yml
+
+  tasks:
+    - name: Ensure output folder exists
+      file:
+        path: "{{ playbook_dir }}/../intended"
+        state: directory
+        mode: "0755"
+      delegate_to: localhost
+      run_once: true
+
+    - name: Define IPv4 regex + valid netmasks
+      set_fact:
+        ipv4_re: '^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$'
+        valid_netmasks:
+          - 255.255.255.255
+          - 255.255.255.254
+          - 255.255.255.252
+          - 255.255.255.248
+          - 255.255.255.240
+          - 255.255.255.224
+          - 255.255.255.192
+          - 255.255.255.128
+          - 255.255.255.0
+          - 255.255.254.0
+          - 255.255.252.0
+          - 255.255.248.0
+          - 255.255.240.0
+          - 255.255.224.0
+          - 255.255.192.0
+          - 255.255.128.0
+          - 255.255.0.0
+          - 255.254.0.0
+          - 255.252.0.0
+          - 255.248.0.0
+          - 255.240.0.0
+          - 255.224.0.0
+          - 255.192.0.0
+          - 255.128.0.0
+          - 255.0.0.0
+          - 254.0.0.0
+          - 252.0.0.0
+          - 248.0.0.0
+          - 240.0.0.0
+          - 224.0.0.0
+          - 192.0.0.0
+          - 128.0.0.0
+      run_once: true
+
+    - name: Define CIDR prefix -> dotted netmask map
+      set_fact:
+        prefix_to_netmask:
+          "0":  "0.0.0.0"
+          "1":  "128.0.0.0"
+          "2":  "192.0.0.0"
+          "3":  "224.0.0.0"
+          "4":  "240.0.0.0"
+          "5":  "248.0.0.0"
+          "6":  "252.0.0.0"
+          "7":  "254.0.0.0"
+          "8":  "255.0.0.0"
+          "9":  "255.128.0.0"
+          "10": "255.192.0.0"
+          "11": "255.224.0.0"
+          "12": "255.240.0.0"
+          "13": "255.248.0.0"
+          "14": "255.252.0.0"
+          "15": "255.254.0.0"
+          "16": "255.255.0.0"
+          "17": "255.255.128.0"
+          "18": "255.255.192.0"
+          "19": "255.255.224.0"
+          "20": "255.255.240.0"
+          "21": "255.255.248.0"
+          "22": "255.255.252.0"
+          "23": "255.255.254.0"
+          "24": "255.255.255.0"
+          "25": "255.255.255.128"
+          "26": "255.255.255.192"
+          "27": "255.255.255.224"
+          "28": "255.255.255.240"
+          "29": "255.255.255.248"
+          "30": "255.255.255.252"
+          "31": "255.255.255.254"
+          "32": "255.255.255.255"
+      run_once: true
+
+    - name: Reject reserved / invalid IPv4 ranges on interfaces
+      assert:
+        that:
+          - not (item.ip | regex_search('^0\.'))
+          - not (item.ip | regex_search('^127\.'))
+          - not (item.ip | regex_search('^224\.'))
+          - not (item.ip | regex_search('^239\.'))
+        fail_msg: >
+          Invalid IPv4 range on {{ inventory_hostname }}.
+          Loopback, multicast, and 0.0.0.0 ranges are not allowed.
+          Bad item: {{ item }}
+      loop: "{{ interfaces }}"
+
+    - name: Validate interface naming convention
+      assert:
+        that:
+          - item.name is match('^(GigabitEthernet|TenGigabitEthernet|FastEthernet|Ethernet)[0-9/]+$')
+        fail_msg: >
+          Interface name invalid on {{ inventory_hostname }}.
+          Expected IOS-style interface name.
+          Bad item: {{ item.name }}
+      loop: "{{ interfaces }}"
+
+    - name: Ensure no duplicate interface names exist
+      assert:
+        that:
+          - interfaces | map(attribute='name') | list | unique | length
+            == interfaces | length
+        fail_msg: >
+          Duplicate interface names detected on {{ inventory_hostname }}.
+          Each interface name must be unique.
+
+    - name: Ensure no duplicate interface IPs exist
+      assert:
+        that:
+          - interfaces | map(attribute='ip') | list | unique | length
+            == interfaces | length
+        fail_msg: >
+          Duplicate IP addresses detected on {{ inventory_hostname }}.
+          Each interface IP must be unique.
+
+    - name: Validate required variables exist
+      assert:
+        that:
+          - interfaces is defined
+          - interfaces | length > 0
+        fail_msg: >
+          Missing required vars for {{ inventory_hostname }}.
+          Ensure host_vars/{{ inventory_hostname }}.yml defines hostname and interfaces.
+
+    - name: Validate each interface (keys + IP format + netmask)
+      assert:
+        that:
+          - item.name is defined
+          - item.ip is defined
+          - item.mask is defined
+          - (item.ip | string) is match(ipv4_re)
+          - ((item.mask | string) in valid_netmasks) or ((item.mask | string) is match('^/(?:[0-9]|[12][0-9]|3[0-2])$'))
+        fail_msg: >
+          Interface validation failed on {{ inventory_hostname }}.
+          Expect: name, ip (IPv4), mask (valid dotted netmask).
+          Bad item: {{ item }}
+      loop: "{{ interfaces }}"
+
+    - name: Validate TACACS is defined when tacacs_servers are present
+      assert:
+        that:
+          - tacacs_key is defined
+          - aaa_group_name is defined
+        fail_msg: >
+          TACACS validation failed on {{ inventory_hostname }}.
+          tacacs_servers is set but tacacs_key or aaa_group_name is missing.
+      when: tacacs_servers is defined and (tacacs_servers | length > 0)
+
+    - name: Validate tacacs_servers structure (name + ip + IP format)
+      assert:
+        that:
+          - item.name is defined
+          - item.ip is defined
+          - (item.ip | string) is match(ipv4_re)
+        fail_msg: >
+          TACACS server entry invalid on {{ inventory_hostname }}.
+          Each tacacs_servers item must include name and valid IPv4 ip.
+          Bad item: {{ item }}
+      loop: "{{ tacacs_servers | default([]) }}"
+
+    - name: Validate TACACS source-interface exists on device
+      assert:
+        that:
+          - tacacs_source_interface in (interfaces | map(attribute='name') | list)
+        fail_msg: >
+          TACACS source-interface {{ tacacs_source_interface }} does not exist
+          in interfaces list for {{ inventory_hostname }}.
+      when: tacacs_source_interface is defined
+
+    - name: Render IOS intended config to file
+      template:
+        src: "{{ playbook_dir }}/../templates/ios_base.j2"
+        dest: "{{ playbook_dir }}/../intended/{{ inventory_hostname }}.cfg"
+        mode: "0644"
+      delegate_to: localhost
+

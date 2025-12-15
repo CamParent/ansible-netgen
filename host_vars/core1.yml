@@ -1,0 +1,13 @@
+hostname: core1
+mgmt_ip: 10.0.0.10
+site: columbus
+interfaces:
+  - name: GigabitEthernet0/1
+    desc: Uplink to ISP
+    ip: 198.51.100.2
+    mask: 255.255.255.252
+  - name: GigabitEthernet0/2
+    desc: Uplink to Branch1
+    ip: 10.1.0.1
+    mask: 255.255.255.252
+

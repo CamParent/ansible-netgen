@@ -1,0 +1,13 @@
+hostname: branch1
+mgmt_ip: 10.0.1.10
+site: vanwert
+ntp_servers:
+  - 10.10.10.10
+dns_servers:
+  - 8.8.8.8
+interfaces:
+  - name: GigabitEthernet0/1
+    desc: Uplink to Core1
+    ip: 10.1.0.2
+    mask: 255.255.255.252
+

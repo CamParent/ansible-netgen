@@ -1,0 +1,11 @@
+# Generated configs
+intended/
+
+# Ansible secrets
+group_vars/*_vault.yml
+.vault_pass
+
+# Retry files
+*.retry
+
+lab.ini

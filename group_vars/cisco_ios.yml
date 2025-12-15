@@ -1,0 +1,17 @@
+# Global baseline for all Cisco IOS devices
+dns_servers:
+  - 8.8.8.8
+  - 1.1.1.1
+
+ntp_servers:
+  - 10.10.10.10
+  - 10.10.10.11
+
+# Optional: global logging target (can be overridden per site)
+syslog_servers:
+  - 10.20.0.50
+
+aaa_authentication_login: "default group TACACS local"
+aaa_authorization_exec: "default group TACACS local"
+aaa_accounting_exec: "default start-stop group TACACS"
+aaa_group_name: "TACACS"
