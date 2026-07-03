@@ -1,0 +1,48 @@
+---
+# roles/f5_cert_renewal/tasks/check_expiry.yml
+# Queries the BIG-IP for the currently installed cert's expiration date
+# and computes days remaining. Appends result to expiry_results.
+
+- name: "Gather installed SSL cert info: {{ cert.name }}"
+  f5networks.f5_modules.bigip_device_info:
+    provider: "{{ provider }}"
+    gather_subset:
+      - ssl-certs
+  delegate_to: localhost
+  register: device_cert_facts
+
+- name: "Locate matching cert object: {{ cert.name }}"
+  ansible.builtin.set_fact:
+    matched_cert: "{{ device_cert_facts.ssl_certs | selectattr('name', 'equalto', cert.name) | list | first | default(None) }}"
+
+- name: "Compute days remaining for: {{ cert.name }}"
+  ansible.builtin.set_fact:
+    cert_days_remaining: >-
+      {{
+        ((matched_cert.expiration_date | to_datetime('%Y-%m-%dT%H:%M:%SZ')) - (ansible_date_time.iso8601 | default(lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ')) | to_datetime('%Y-%m-%dT%H:%M:%SZ'))).days
+      }}
+  when: matched_cert is not none
+
+- name: "Record result for: {{ cert.name }}"
+  ansible.builtin.set_fact:
+    expiry_results: "{{ expiry_results | default([]) + [ cert | combine({'days_remaining': (cert_days_remaining | default(-1) | int), 'found_on_device': matched_cert is not none}) ] }}"
+
+- name: "Warn if certificate not found on device: {{ cert.name }}"
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: {{ cert.name }} not found on {{ inventory_hostname }} —
+      will be treated as a first-time install candidate if renewal is run.
+  when: matched_cert is none
+
+- name: "Log expiry check to audit log"
+  ansible.builtin.lineinfile:
+    path: "{{ cert_audit_log }}"
+    line: >-
+      {{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}
+      host={{ inventory_hostname }}
+      cert={{ cert.name }}
+      days_remaining={{ cert_days_remaining | default('n/a') }}
+      action=check
+    create: true
+    mode: "0640"
+  delegate_to: localhost

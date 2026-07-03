@@ -1,0 +1,20 @@
+---
+# site.yml
+# Entry point for F5 BIG-IP SSL certificate renewal automation.
+#
+# Usage:
+#   ansible-playbook site.yml -i inventory/hosts.yml --vault-id @prompt
+#
+# Safe by default: runs in check mode for expiry reporting unless
+# -e "confirm_renew=true" is passed, which gates the actual import/swap.
+
+- name: Renew SSL certificates on F5 BIG-IP devices
+  hosts: f5_devices
+  connection: local
+  gather_facts: false
+
+  vars:
+    confirm_renew: false
+
+  roles:
+    - role: f5_cert_renewal

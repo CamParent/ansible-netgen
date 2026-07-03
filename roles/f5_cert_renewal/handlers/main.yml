@@ -1,0 +1,9 @@
+---
+# roles/f5_cert_renewal/handlers/main.yml
+
+- name: save f5 config
+  f5networks.f5_modules.bigip_command:
+    provider: "{{ provider }}"
+    commands:
+      - save sys config
+  delegate_to: localhost

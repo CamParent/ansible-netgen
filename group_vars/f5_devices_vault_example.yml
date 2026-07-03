@@ -1,0 +1,12 @@
+---
+# inventory/hosts.yml references vault_f5_user / vault_f5_password.
+# In a real deployment these live in group_vars/f5_devices/vault.yml,
+# encrypted with `ansible-vault create group_vars/f5_devices/vault.yml`.
+#
+# Example plaintext before encryption:
+#
+# vault_f5_user: svc_ansible_f5
+# vault_f5_password: "ReplaceMeWithVaultedSecret!"
+#
+# This file is intentionally left as documentation only — do not commit
+# real credentials to git, vaulted or not, in a portfolio repo.

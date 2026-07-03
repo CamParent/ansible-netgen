@@ -1,0 +1,16 @@
+---
+# Example inventory — replace with real lab/prod targets.
+# Credentials are pulled from group_vars/f5_devices/vault.yml (ansible-vault encrypted).
+
+all:
+  children:
+    f5_devices:
+      hosts:
+        bigip-lab-01:
+          ansible_host: 192.168.1.245
+          provider:
+            server: "{{ ansible_host }}"
+            server_port: 443
+            user: "{{ vault_f5_user }}"
+            password: "{{ vault_f5_password }}"
+            validate_certs: false

@@ -1,0 +1,6 @@
+
+  - name: f5networks.f5_modules
+    version: ">=1.29.0"
+
+  - name: f5networks.f5_modules
+    version: ">=1.29.0"

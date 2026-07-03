@@ -1,0 +1,50 @@
+---
+# roles/f5_cert_renewal/tasks/main.yml
+# Orchestrates the renewal pipeline: check -> stage -> import -> bind -> verify
+
+- name: Ensure local audit log directory exists
+  ansible.builtin.file:
+    path: "{{ cert_audit_log | dirname }}"
+    state: directory
+    mode: "0750"
+  delegate_to: localhost
+  run_once: true
+
+- name: Check expiry for each managed certificate
+  ansible.builtin.include_tasks: check_expiry.yml
+  loop: "{{ f5_certificates }}"
+  loop_control:
+    loop_var: cert
+
+- name: Build list of certificates due for renewal
+  ansible.builtin.set_fact:
+    certs_due_for_renewal: "{{ certs_due_for_renewal | default([]) + [cert] }}"
+  loop: "{{ expiry_results | default([]) }}"
+  loop_control:
+    loop_var: cert
+  when: cert.days_remaining < cert_expiry_threshold_days
+
+- name: Report renewal candidates
+  ansible.builtin.debug:
+    msg: >-
+      {{ certs_due_for_renewal | length }} certificate(s) due for renewal
+      on {{ inventory_hostname }}:
+      {{ certs_due_for_renewal | map(attribute='name') | list }}
+  when: certs_due_for_renewal is defined and certs_due_for_renewal | length > 0
+
+- name: Stop here if not confirmed (dry-run / reporting mode)
+  ansible.builtin.debug:
+    msg: >-
+      Dry-run only. Re-run with -e "confirm_renew=true" to actually
+      import and bind renewed certificates.
+  when: not confirm_renew | bool
+
+- name: Execute renewal for each due certificate
+  ansible.builtin.include_tasks: renew_certificate.yml
+  loop: "{{ certs_due_for_renewal | default([]) }}"
+  loop_control:
+    loop_var: cert
+  when:
+    - confirm_renew | bool
+    - certs_due_for_renewal is defined
+    - certs_due_for_renewal | length > 0

@@ -1,0 +1,21 @@
+---
+# roles/f5_cert_renewal/defaults/main.yml
+
+# How many days before expiry should trigger a renewal candidate
+cert_expiry_threshold_days: 30
+
+# Certificates managed by this playbook. Extend this list per-environment
+# via group_vars or host_vars — this default is just a POC example.
+f5_certificates:
+  - name: wildcard-example-com
+    cert_file: "{{ playbook_dir }}/files/certs/wildcard-example-com.crt"
+    key_file: "{{ playbook_dir }}/files/certs/wildcard-example-com.key"
+    chain_file: "{{ playbook_dir }}/files/certs/intermediate-chain.crt"
+    client_ssl_profile: clientssl-wildcard-example-com
+
+# Where to drop a local audit log of what was renewed/skipped
+cert_audit_log: "{{ playbook_dir }}/logs/cert_renewal_audit.log"
+
+# If true, an existing cert/key pair on the device is archived
+# (renamed with a timestamp) before being overwritten, instead of deleted.
+archive_old_cert: true

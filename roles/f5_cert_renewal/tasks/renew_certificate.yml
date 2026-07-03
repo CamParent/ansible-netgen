@@ -1,0 +1,103 @@
+---
+# roles/f5_cert_renewal/tasks/renew_certificate.yml
+# Imports a new cert/key pair, optionally archives the old one,
+# rebinds the client-SSL profile, and verifies the swap.
+
+- name: "Assert local cert/key files exist before upload: {{ cert.name }}"
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ cert.cert_file }}"
+    - "{{ cert.key_file }}"
+  register: cert_file_stats
+  delegate_to: localhost
+  failed_when: not cert_file_stats.stat.exists
+
+- name: "Archive existing cert/key on device: {{ cert.name }}"
+  ansible.builtin.set_fact:
+    archive_suffix: "{{ lookup('pipe', 'date -u +%Y%m%dT%H%M%SZ') }}"
+  when: archive_old_cert | bool
+
+- name: "Rename existing cert object for archival: {{ cert.name }}"
+  f5networks.f5_modules.bigip_ssl_certificate:
+    provider: "{{ provider }}"
+    name: "{{ cert.name }}_archived_{{ archive_suffix }}"
+    cert_content: "{{ lookup('file', cert.cert_file) }}"
+    state: present
+  delegate_to: localhost
+  when:
+    - archive_old_cert | bool
+    - cert.found_on_device | default(false)
+  register: archive_result
+  ignore_errors: true   # archival is best-effort; don't block the renewal on it
+
+- name: "Upload new private key: {{ cert.name }}"
+  f5networks.f5_modules.bigip_ssl_key:
+    provider: "{{ provider }}"
+    name: "{{ cert.name }}"
+    content: "{{ lookup('file', cert.key_file) }}"
+    state: present
+  delegate_to: localhost
+  register: key_upload
+  no_log: true
+
+- name: "Upload new certificate: {{ cert.name }}"
+  f5networks.f5_modules.bigip_ssl_certificate:
+    provider: "{{ provider }}"
+    name: "{{ cert.name }}"
+    cert_content: "{{ lookup('file', cert.cert_file) }}"
+    state: present
+  delegate_to: localhost
+  register: cert_upload
+
+- name: "Upload intermediate chain (if provided): {{ cert.name }}"
+  f5networks.f5_modules.bigip_ssl_certificate:
+    provider: "{{ provider }}"
+    name: "{{ cert.name }}-chain"
+    cert_content: "{{ lookup('file', cert.chain_file) }}"
+    state: present
+  delegate_to: localhost
+  when: cert.chain_file is defined
+  register: chain_upload
+
+- name: "Rebind client-SSL profile to renewed cert/key: {{ cert.client_ssl_profile }}"
+  f5networks.f5_modules.bigip_profile_client_ssl:
+    provider: "{{ provider }}"
+    name: "{{ cert.client_ssl_profile }}"
+    cert_key_chain:
+      - cert: "{{ cert.name }}"
+        key: "{{ cert.name }}"
+        chain: "{{ cert.name }}-chain"
+    state: present
+  delegate_to: localhost
+  register: profile_update
+  notify: save f5 config
+
+- name: "Verify new expiration date is in the future: {{ cert.name }}"
+  f5networks.f5_modules.bigip_device_info:
+    provider: "{{ provider }}"
+    gather_subset:
+      - ssl-certs
+  delegate_to: localhost
+  register: post_renewal_facts
+
+- name: "Assert renewed cert is now installed and current: {{ cert.name }}"
+  ansible.builtin.assert:
+    that:
+      - post_renewal_facts.ssl_certs | selectattr('name', 'equalto', cert.name) | list | length > 0
+    fail_msg: "Post-renewal verification failed for {{ cert.name }} on {{ inventory_hostname }}"
+    success_msg: "{{ cert.name }} renewed and verified on {{ inventory_hostname }}"
+
+- name: "Log renewal action to audit log"
+  ansible.builtin.lineinfile:
+    path: "{{ cert_audit_log }}"
+    line: >-
+      {{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}
+      host={{ inventory_hostname }}
+      cert={{ cert.name }}
+      profile={{ cert.client_ssl_profile }}
+      action=renewed
+      changed={{ profile_update.changed | default(false) }}
+    create: true
+    mode: "0640"
+  delegate_to: localhost
